@@ -37,6 +37,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -123,37 +124,14 @@ jobs:
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-        run: |
-          # 1. Pre-install the Azure Trusted Signing module
-          # This prevents electron-builder from running the buggy 'install' sub-routine
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name TrustedSigning -AllowPrerelease -Force -Scope CurrentUser
-          
-          $ErrorActionPreference = 'Stop'
-          $attempts = 3
-          for ($i = 1; $i -le $attempts; $i++) {
-            Write-Host "Build attempt $($i)/$($attempts)"
-            
-            npm run ${{ matrix.build_command }}
-            
-            if ($LASTEXITCODE -eq 0) { exit 0 }
-            if ($i -lt $attempts) {
-              Write-Host "Build failed. Retrying in 20s..."
-              Start-Sleep -Seconds 20
-            }
-          }
-          exit $LASTEXITCODE
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run ${{ matrix.build_command }}
 
       - name: npm build on macOS
         if: ${{ matrix.platform == 'macos' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # certificate for signing (base64-encoded .p12) and its password
-          CSC_LINK: ${{ secrets.MAC_CERTS }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run ${{ matrix.build_command }}
 
       - name: npm build on Linux
@@ -185,24 +163,6 @@ jobs:
             mv dist/latest-mac.yml dist/latest-${{ matrix.build_name }}.yml
           fi
 
-      - name: Notarize and staple macOS DMG
-        if: ${{ matrix.platform == 'macos' }}
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          shopt -s nullglob
-          for dmg in dist/*.dmg; do
-            echo "Submitting $dmg for notarization"
-            xcrun notarytool submit "$dmg" \
-              --apple-id "$APPLE_ID" \
-              --team-id "$APPLE_TEAM_ID" \
-              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-              --wait
-            echo "Stapling ticket to $dmg"
-            xcrun stapler staple "$dmg"
-          done
 
       - name: Upload binaries to release
         uses: xresloader/upload-to-github-release@v1
