@@ -1,0 +1,22 @@
+--- src/server/index.ts
++++ src/server/index.ts
+@@ -118,6 +118,17 @@
+ 		const clientDistDirectory = this.clientDistDirectory;
+ 
+ 		if (clientDistDirectory) {
++			this.app.use(async (ctx, next) => {
++				const pathRoomId = ctx.path.replace('/', '');
++				const isKnown = getDeskreenGlobal().roomIDService.isRoomIDTaken(pathRoomId);
++				if (!isKnown && !ctx.path.includes('.')) {
++					const currentRoomId = getDeskreenGlobal().sharingSessionService.waitingForConnectionSharingSession?.roomID;
++					if (currentRoomId && pathRoomId !== currentRoomId) {
++						ctx.redirect(`/${currentRoomId}`);
++						return;
++					}
++				}
++				await next();
++			});
++
+ 			this.app.use(async (ctx, next) => {
+ 				setStaticFileHeaders(ctx);
+ 				await koaStatic(clientDistDirectory)(ctx, next);
